@@ -1,19 +1,24 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
+// OpenZeppelin imports for core functionality
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts/utils/Pausable.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "./interfaces/ISimpleSwap.sol";
 
 /**
  * @title SimpleSwap
- * @dev Implements a basic Uniswap V2-style decentralized exchange with:
- * - Liquidity pool creation
- * - Token swapping functionality
- * - LP (Liquidity Provider) token issuance
+ * @dev A Uniswap V2-style decentralized exchange implementation featuring:
+ * - Liquidity pool creation and management
+ * - Token swap functionality
+ * - LP token issuance
+ * - Emergency safety features
  * @author Francisco López G.
  */
-contract SimpleSwap is ERC20, ISimpleSwap {
+contract SimpleSwap is ERC20, Pausable, Ownable, ReentrancyGuard, ISimpleSwap {
     using SafeERC20 for IERC20;
 
     // ==============================================
@@ -21,38 +26,24 @@ contract SimpleSwap is ERC20, ISimpleSwap {
     // ==============================================
 
     /**
-     * @dev Structure to store token pair reserves
-     * @param reserveA Reserve amount of first token
-     * @param reserveB Reserve amount of second token
+     * @dev Struct to store token pair reserves
      */
     struct Pool {
-        uint256 reserveA;
-        uint256 reserveB;
+        uint256 reserveA; // Reserve amount of tokenA
+        uint256 reserveB; // Reserve amount of tokenB
     }
 
     // ==============================================
     //                STATE VARIABLES
     // ==============================================
 
-    /**
-     * @notice Mapping of token pairs to their reserve balances
-     * @dev pools[token0][token1] stores reserves for sorted token pair
-     */
+    // Mapping of token pairs to their reserve balances
     mapping(address => mapping(address => Pool)) public pools;
 
     // ==============================================
     //                   EVENTS
     // ==============================================
 
-    /**
-     * @notice Emitted when liquidity is added to a pool
-     * @param provider Address providing the liquidity
-     * @param tokenA First token in pair
-     * @param tokenB Second token in pair
-     * @param amountA Amount of first token added
-     * @param amountB Amount of second token added
-     * @param liquidity Amount of LP tokens minted
-     */
     event LiquidityAdded(
         address indexed provider,
         address indexed tokenA,
@@ -62,15 +53,6 @@ contract SimpleSwap is ERC20, ISimpleSwap {
         uint256 liquidity
     );
 
-    /**
-     * @notice Emitted when liquidity is removed from a pool
-     * @param provider Address removing the liquidity
-     * @param tokenA First token in pair
-     * @param tokenB Second token in pair
-     * @param amountA Amount of first token withdrawn
-     * @param amountB Amount of second token withdrawn
-     * @param liquidity Amount of LP tokens burned
-     */
     event LiquidityRemoved(
         address indexed provider,
         address indexed tokenA,
@@ -80,14 +62,6 @@ contract SimpleSwap is ERC20, ISimpleSwap {
         uint256 liquidity
     );
 
-    /**
-     * @notice Emitted when a token swap occurs
-     * @param sender Address initiating the swap
-     * @param tokenIn Input token address
-     * @param tokenOut Output token address
-     * @param amountIn Amount of input tokens
-     * @param amountOut Amount of output tokens
-     */
     event Swap(
         address indexed sender,
         address indexed tokenIn,
@@ -96,24 +70,21 @@ contract SimpleSwap is ERC20, ISimpleSwap {
         uint256 amountOut
     );
 
+    event EmergencyWithdraw(
+        address indexed token,
+        address indexed to,
+        uint256 amount
+    );
+
     // ==============================================
     //                 MODIFIERS
     // ==============================================
 
-    /**
-     * @dev Ensures transaction is executed before deadline
-     * @param deadline Timestamp after which transaction should fail
-     */
     modifier ensureDeadline(uint256 deadline) {
         require(deadline >= block.timestamp, "Deadline passed");
         _;
     }
 
-    /**
-     * @dev Ensures token addresses are different
-     * @param tokenA First token address
-     * @param tokenB Second token address
-     */
     modifier validPair(address tokenA, address tokenB) {
         require(tokenA != tokenB, "Identical tokens");
         _;
@@ -124,29 +95,16 @@ contract SimpleSwap is ERC20, ISimpleSwap {
     // ==============================================
 
     /**
-     * @dev Initializes contract with LP token name and symbol
+     * @dev Initializes the LP token with name and symbol
      */
-    constructor() ERC20("SimpleSwap LP", "SS-LP") {}
+    constructor() ERC20("SimpleSwap LP", "SS-LP") Ownable(msg.sender) {}
 
     // ==============================================
-    //              EXTERNAL FUNCTIONS
+    //           EXTERNAL PUBLIC FUNCTIONS
     // ==============================================
 
     /**
-     * @notice Adds liquidity to a token pair
-     * @dev For initial deposit, uses square root of token amount product
-     * @dev For subsequent deposits, maintains existing reserve ratio
-     * @param tokenA First token address
-     * @param tokenB Second token address
-     * @param amountADesired Desired amount of first token to deposit
-     * @param amountBDesired Desired amount of second token to deposit
-     * @param amountAMin Minimum acceptable amount of first token
-     * @param amountBMin Minimum acceptable amount of second token
-     * @param to Address to receive LP tokens
-     * @param deadline Transaction expiry timestamp
-     * @return amountA Actual amount of first token deposited
-     * @return amountB Actual amount of second token deposited
-     * @return liquidity Amount of LP tokens minted
+     * @notice Adds liquidity to a token pair pool
      */
     function addLiquidity(
         address tokenA,
@@ -162,9 +120,11 @@ contract SimpleSwap is ERC20, ISimpleSwap {
         override
         ensureDeadline(deadline)
         validPair(tokenA, tokenB)
+        whenNotPaused
+        nonReentrant
         returns (uint256 amountA, uint256 amountB, uint256 liquidity)
     {
-        // Validate input amounts first (require at top)
+        // Validate input amounts
         require(amountADesired > 0 && amountBDesired > 0, "Invalid amounts");
         require(
             amountADesired >= amountAMin && amountBDesired >= amountBMin,
@@ -175,16 +135,18 @@ contract SimpleSwap is ERC20, ISimpleSwap {
         (address token0, address token1) = _sortTokens(tokenA, tokenB);
         Pool storage pool = pools[token0][token1];
 
-        // Cache reserve values to minimize storage reads
+        // Get current reserves from storage
         uint256 reserveA = pool.reserveA;
         uint256 reserveB = pool.reserveB;
 
+        // Check if this is initial liquidity provision
         if (reserveA == 0 && reserveB == 0) {
-            // Initial liquidity provision
+            // For initial deposit, use desired amounts directly
             (amountA, amountB) = (amountADesired, amountBDesired);
-            liquidity = _sqrt(amountA * amountB); // Geometric mean for initial LP tokens
+            // Calculate initial liquidity using geometric mean (sqrt(x*y))
+            liquidity = _sqrt(amountA * amountB);
         } else {
-            // Subsequent liquidity provision - maintain ratio
+            // For subsequent deposits, maintain the existing ratio
             (amountA, amountB) = _calculateOptimalDeposit(
                 amountADesired,
                 amountBDesired,
@@ -193,14 +155,17 @@ contract SimpleSwap is ERC20, ISimpleSwap {
                 reserveA,
                 reserveB
             );
+            // Calculate liquidity proportional to the deposit
             liquidity = _calculateLiquidity(amountA, reserveA, totalSupply());
         }
 
-        // Transfer tokens from user and mint LP tokens
+        // Transfer tokens from user to contract
         _transferTokens(tokenA, tokenB, amountA, amountB);
+
+        // Mint LP tokens to liquidity provider
         _mint(to, liquidity);
 
-        // Single state variable update
+        // Update pool reserves
         _updateReserves(token0, token1, reserveA + amountA, reserveB + amountB);
 
         emit LiquidityAdded(
@@ -214,16 +179,7 @@ contract SimpleSwap is ERC20, ISimpleSwap {
     }
 
     /**
-     * @notice Removes liquidity from a token pair
-     * @param tokenA First token address
-     * @param tokenB Second token address
-     * @param liquidity Amount of LP tokens to burn
-     * @param amountAMin Minimum acceptable amount of first token to receive
-     * @param amountBMin Minimum acceptable amount of second token to receive
-     * @param to Address to receive withdrawn tokens
-     * @param deadline Transaction expiry timestamp
-     * @return amountA Amount of first token withdrawn
-     * @return amountB Amount of second token withdrawn
+     * @notice Removes liquidity from a token pair pool
      */
     function removeLiquidity(
         address tokenA,
@@ -238,6 +194,8 @@ contract SimpleSwap is ERC20, ISimpleSwap {
         override
         ensureDeadline(deadline)
         validPair(tokenA, tokenB)
+        whenNotPaused
+        nonReentrant
         returns (uint256 amountA, uint256 amountB)
     {
         require(liquidity > 0, "Invalid liquidity");
@@ -246,7 +204,7 @@ contract SimpleSwap is ERC20, ISimpleSwap {
         (address token0, address token1) = _sortTokens(tokenA, tokenB);
         Pool storage pool = pools[token0][token1];
 
-        // Cache reserve values
+        // Get current reserves from storage
         uint256 reserveA = pool.reserveA;
         uint256 reserveB = pool.reserveB;
 
@@ -258,12 +216,12 @@ contract SimpleSwap is ERC20, ISimpleSwap {
         );
         require(amountA >= amountAMin && amountB >= amountBMin, "Min not met");
 
-        // Burn LP tokens and transfer underlying tokens
+        // Burn LP tokens and transfer underlying assets
         _burn(msg.sender, liquidity);
         _safeTransfer(token0, to, amountA);
         _safeTransfer(token1, to, amountB);
 
-        // Single state variable update
+        // Update pool reserves
         _updateReserves(token0, token1, reserveA - amountA, reserveB - amountB);
 
         emit LiquidityRemoved(
@@ -278,12 +236,6 @@ contract SimpleSwap is ERC20, ISimpleSwap {
 
     /**
      * @notice Swaps an exact amount of input tokens for output tokens
-     * @param amountIn Exact amount of input tokens
-     * @param amountOutMin Minimum acceptable amount of output tokens
-     * @param path Array containing [inputToken, outputToken] addresses
-     * @param to Address to receive output tokens
-     * @param deadline Transaction expiry timestamp
-     * @return amounts Array containing [inputAmount, outputAmount]
      */
     function swapExactTokensForTokens(
         uint256 amountIn,
@@ -295,32 +247,41 @@ contract SimpleSwap is ERC20, ISimpleSwap {
         external
         override
         ensureDeadline(deadline)
+        whenNotPaused
+        nonReentrant
         returns (uint256[] memory amounts)
     {
+        // Validate swap path (only direct pairs supported)
         require(path.length == 2, "Invalid path");
 
         amounts = new uint256[](2);
         amounts[0] = amountIn;
 
+        // Extract input and output tokens from path
         (address tokenIn, address tokenOut) = (path[0], path[1]);
         Pool storage pool = pools[tokenIn][tokenOut];
 
-        // Cache reserve values
+        // Get current reserves from storage
         uint256 reserveIn = pool.reserveA;
         uint256 reserveOut = pool.reserveB;
 
+        // Basic input validation
         require(amountIn > 0, "Invalid amount");
         require(reserveIn > 0 && reserveOut > 0, "No liquidity");
 
-        // Calculate output amount based on constant product formula
+        // Calculate output amount using constant product formula
         amounts[1] = getAmountOut(amountIn, reserveIn, reserveOut);
         require(amounts[1] >= amountOutMin, "Insufficient output");
 
-        // Transfer tokens
+        // Execute the swap:
+        // 1. Take input tokens from user
         IERC20(tokenIn).safeTransferFrom(msg.sender, address(this), amountIn);
+        // 2. Send output tokens to recipient
         IERC20(tokenOut).safeTransfer(to, amounts[1]);
 
-        // Single state variable update
+        // Update reserves:
+        // - Increase input token reserve
+        // - Decrease output token reserve
         _updateReserves(
             tokenIn,
             tokenOut,
@@ -331,15 +292,44 @@ contract SimpleSwap is ERC20, ISimpleSwap {
         emit Swap(msg.sender, tokenIn, tokenOut, amountIn, amounts[1]);
     }
 
+    /**
+     * @notice Pauses all trading and liquidity operations
+     * @dev Only callable by owner
+     */
+    function pause() external onlyOwner {
+        _pause();
+    }
+
+    /**
+     * @notice Unpauses all trading and liquidity operations
+     * @dev Only callable by owner
+     */
+    function unpause() external onlyOwner {
+        _unpause();
+    }
+
+    /**
+     * @notice Emergency withdrawal of tokens from the contract
+     * @dev Only callable by owner when paused
+     */
+    function emergencyWithdraw(
+        address token,
+        address to,
+        uint256 amount
+    ) external onlyOwner whenPaused nonReentrant {
+        require(to != address(0), "Invalid recipient");
+        require(amount > 0, "Invalid amount");
+
+        IERC20(token).safeTransfer(to, amount);
+        emit EmergencyWithdraw(token, to, amount);
+    }
+
     // ==============================================
-    //              VIEW FUNCTIONS
+    //           EXTERNAL VIEW/PURE FUNCTIONS
     // ==============================================
 
     /**
      * @notice Gets the price of tokenA in terms of tokenB
-     * @param tokenA First token address
-     * @param tokenB Second token address
-     * @return price Price of tokenA in terms of tokenB (with 18 decimals)
      */
     function getPrice(
         address tokenA,
@@ -350,16 +340,13 @@ contract SimpleSwap is ERC20, ISimpleSwap {
         Pool memory pool = pools[tokenA][tokenB];
         require(pool.reserveA > 0 && pool.reserveB > 0, "No liquidity");
 
+        // Price is calculated as (reserveB * 1e18) / reserveA
         price = (pool.reserveB * 1e18) / pool.reserveA;
     }
 
     /**
      * @notice Calculates output amount for a given input and reserves
      * @dev Uses constant product formula: amountOut = (amountIn * reserveOut) / (reserveIn + amountIn)
-     * @param amountIn Input token amount
-     * @param reserveIn Reserve of input token
-     * @param reserveOut Reserve of output token
-     * @return amountOut Expected output token amount
      */
     function getAmountOut(
         uint256 amountIn,
@@ -369,19 +356,16 @@ contract SimpleSwap is ERC20, ISimpleSwap {
         require(amountIn > 0, "Invalid amount");
         require(reserveIn > 0 && reserveOut > 0, "No liquidity");
 
+        // Constant product formula calculation
         amountOut = (amountIn * reserveOut) / (reserveIn + amountIn);
     }
 
     // ==============================================
-    //              INTERNAL FUNCTIONS
+    //                INTERNAL FUNCTIONS
     // ==============================================
 
     /**
      * @dev Sorts two token addresses
-     * @param tokenA First token address
-     * @param tokenB Second token address
-     * @return token0 Lower address
-     * @return token1 Higher address
      */
     function _sortTokens(
         address tokenA,
@@ -394,14 +378,6 @@ contract SimpleSwap is ERC20, ISimpleSwap {
 
     /**
      * @dev Calculates optimal deposit amounts to maintain pool ratio
-     * @param amountADesired Desired amount of tokenA
-     * @param amountBDesired Desired amount of tokenB
-     * @param amountAMin Minimum acceptable amount of tokenA
-     * @param amountBMin Minimum acceptable amount of tokenB
-     * @param reserveA Current reserve of tokenA
-     * @param reserveB Current reserve of tokenB
-     * @return amountA Optimal amount of tokenA to deposit
-     * @return amountB Optimal amount of tokenB to deposit
      */
     function _calculateOptimalDeposit(
         uint256 amountADesired,
@@ -411,12 +387,14 @@ contract SimpleSwap is ERC20, ISimpleSwap {
         uint256 reserveA,
         uint256 reserveB
     ) internal pure returns (uint256 amountA, uint256 amountB) {
+        // Calculate optimal amount of tokenB for desired tokenA
         uint256 amountBOptimal = _quote(amountADesired, reserveA, reserveB);
 
         if (amountBOptimal <= amountBDesired) {
             require(amountBOptimal >= amountBMin, "Insufficient B");
             (amountA, amountB) = (amountADesired, amountBOptimal);
         } else {
+            // Calculate optimal amount of tokenA for desired tokenB
             uint256 amountAOptimal = _quote(amountBDesired, reserveB, reserveA);
             require(amountAOptimal >= amountAMin, "Insufficient A");
             (amountA, amountB) = (amountAOptimal, amountBDesired);
@@ -425,44 +403,33 @@ contract SimpleSwap is ERC20, ISimpleSwap {
 
     /**
      * @dev Calculates LP tokens to mint based on deposit
-     * @param amount Deposit amount
-     * @param reserve Existing reserve amount
-     * @param totalSupply Current total LP token supply
-     * @return liquidity LP tokens to mint
      */
     function _calculateLiquidity(
         uint256 amount,
         uint256 reserve,
         uint256 totalSupply
     ) internal pure returns (uint256 liquidity) {
+        // Calculate liquidity proportional to deposit amount
         liquidity = (amount * totalSupply) / reserve;
         require(liquidity > 0, "Insufficient liquidity");
     }
 
     /**
      * @dev Calculates withdrawal amounts based on LP share
-     * @param liquidity LP tokens to burn
-     * @param reserveA Reserve of tokenA
-     * @param reserveB Reserve of tokenB
-     * @return amountA Amount of tokenA to withdraw
-     * @return amountB Amount of tokenB to withdraw
      */
     function _calculateWithdrawalAmounts(
         uint256 liquidity,
         uint256 reserveA,
         uint256 reserveB
     ) internal view returns (uint256 amountA, uint256 amountB) {
+        // Calculate proportional share of reserves
         uint256 _totalSupply = totalSupply();
         amountA = (liquidity * reserveA) / _totalSupply;
         amountB = (liquidity * reserveB) / _totalSupply;
     }
 
     /**
-     * @dev Updates pool reserves
-     * @param tokenA First token address
-     * @param tokenB Second token address
-     * @param newReserveA New reserve for tokenA
-     * @param newReserveB New reserve for tokenB
+     * @dev Updates pool reserves in storage
      */
     function _updateReserves(
         address tokenA,
@@ -475,10 +442,6 @@ contract SimpleSwap is ERC20, ISimpleSwap {
 
     /**
      * @dev Transfers both tokens from user to contract
-     * @param tokenA First token address
-     * @param tokenB Second token address
-     * @param amountA Amount of tokenA
-     * @param amountB Amount of tokenB
      */
     function _transferTokens(
         address tokenA,
@@ -492,9 +455,6 @@ contract SimpleSwap is ERC20, ISimpleSwap {
 
     /**
      * @dev Safely transfers tokens to recipient
-     * @param token Token address
-     * @param to Recipient address
-     * @param amount Transfer amount
      */
     function _safeTransfer(address token, address to, uint256 amount) internal {
         IERC20(token).safeTransfer(to, amount);
@@ -505,9 +465,7 @@ contract SimpleSwap is ERC20, ISimpleSwap {
     // ==============================================
 
     /**
-     * @dev Calculates square root (for initial liquidity calculation)
-     * @param y Number to calculate square root of
-     * @return z Square root of y
+     * @dev Calculates square root using Babylonian method
      */
     function _sqrt(uint256 y) internal pure returns (uint256 z) {
         if (y > 3) {
@@ -524,10 +482,6 @@ contract SimpleSwap is ERC20, ISimpleSwap {
 
     /**
      * @dev Calculates equivalent token amount to maintain ratio
-     * @param amountA Amount of tokenA
-     * @param reserveA Reserve of tokenA
-     * @param reserveB Reserve of tokenB
-     * @return amountB Equivalent amount of tokenB
      */
     function _quote(
         uint256 amountA,
