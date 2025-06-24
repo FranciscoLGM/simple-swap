@@ -162,20 +162,19 @@ contract SimpleSwap is ERC20, ISimpleSwap {
         override
         ensureDeadline(deadline)
         validPair(tokenA, tokenB)
-        returns (
-            uint256 amountA,
-            uint256 amountB,
-            uint256 liquidity
-        )
+        returns (uint256 amountA, uint256 amountB, uint256 liquidity)
     {
         // Validate input amounts first (require at top)
         require(amountADesired > 0 && amountBDesired > 0, "Invalid amounts");
-        require(amountADesired >= amountAMin && amountBDesired >= amountBMin, "Min not met");
+        require(
+            amountADesired >= amountAMin && amountBDesired >= amountBMin,
+            "Min not met"
+        );
 
         // Sort tokens to ensure consistent ordering
         (address token0, address token1) = _sortTokens(tokenA, tokenB);
         Pool storage pool = pools[token0][token1];
-        
+
         // Cache reserve values to minimize storage reads
         uint256 reserveA = pool.reserveA;
         uint256 reserveB = pool.reserveB;
@@ -200,11 +199,18 @@ contract SimpleSwap is ERC20, ISimpleSwap {
         // Transfer tokens from user and mint LP tokens
         _transferTokens(tokenA, tokenB, amountA, amountB);
         _mint(to, liquidity);
-        
+
         // Single state variable update
         _updateReserves(token0, token1, reserveA + amountA, reserveB + amountB);
 
-        emit LiquidityAdded(msg.sender, tokenA, tokenB, amountA, amountB, liquidity);
+        emit LiquidityAdded(
+            msg.sender,
+            tokenA,
+            tokenB,
+            amountA,
+            amountB,
+            liquidity
+        );
     }
 
     /**
@@ -239,7 +245,7 @@ contract SimpleSwap is ERC20, ISimpleSwap {
         // Sort tokens and get pool reserves
         (address token0, address token1) = _sortTokens(tokenA, tokenB);
         Pool storage pool = pools[token0][token1];
-        
+
         // Cache reserve values
         uint256 reserveA = pool.reserveA;
         uint256 reserveB = pool.reserveB;
@@ -256,11 +262,18 @@ contract SimpleSwap is ERC20, ISimpleSwap {
         _burn(msg.sender, liquidity);
         _safeTransfer(token0, to, amountA);
         _safeTransfer(token1, to, amountB);
-        
+
         // Single state variable update
         _updateReserves(token0, token1, reserveA - amountA, reserveB - amountB);
 
-        emit LiquidityRemoved(msg.sender, tokenA, tokenB, amountA, amountB, liquidity);
+        emit LiquidityRemoved(
+            msg.sender,
+            tokenA,
+            tokenB,
+            amountA,
+            amountB,
+            liquidity
+        );
     }
 
     /**
@@ -285,30 +298,35 @@ contract SimpleSwap is ERC20, ISimpleSwap {
         returns (uint256[] memory amounts)
     {
         require(path.length == 2, "Invalid path");
-        
+
         amounts = new uint256[](2);
         amounts[0] = amountIn;
-        
+
         (address tokenIn, address tokenOut) = (path[0], path[1]);
         Pool storage pool = pools[tokenIn][tokenOut];
-        
+
         // Cache reserve values
         uint256 reserveIn = pool.reserveA;
         uint256 reserveOut = pool.reserveB;
-        
+
         require(amountIn > 0, "Invalid amount");
         require(reserveIn > 0 && reserveOut > 0, "No liquidity");
-        
+
         // Calculate output amount based on constant product formula
         amounts[1] = getAmountOut(amountIn, reserveIn, reserveOut);
         require(amounts[1] >= amountOutMin, "Insufficient output");
-        
+
         // Transfer tokens
         IERC20(tokenIn).safeTransferFrom(msg.sender, address(this), amountIn);
         IERC20(tokenOut).safeTransfer(to, amounts[1]);
-        
+
         // Single state variable update
-        _updateReserves(tokenIn, tokenOut, reserveIn + amountIn, reserveOut - amounts[1]);
+        _updateReserves(
+            tokenIn,
+            tokenOut,
+            reserveIn + amountIn,
+            reserveOut - amounts[1]
+        );
 
         emit Swap(msg.sender, tokenIn, tokenOut, amountIn, amounts[1]);
     }
@@ -323,17 +341,15 @@ contract SimpleSwap is ERC20, ISimpleSwap {
      * @param tokenB Second token address
      * @return price Price of tokenA in terms of tokenB (with 18 decimals)
      */
-    function getPrice(address tokenA, address tokenB)
-        external
-        view
-        override
-        returns (uint256 price)
-    {
+    function getPrice(
+        address tokenA,
+        address tokenB
+    ) external view override returns (uint256 price) {
         require(tokenA != tokenB, "Identical tokens");
-        
+
         Pool memory pool = pools[tokenA][tokenB];
         require(pool.reserveA > 0 && pool.reserveB > 0, "No liquidity");
-        
+
         price = (pool.reserveB * 1e18) / pool.reserveA;
     }
 
@@ -352,7 +368,7 @@ contract SimpleSwap is ERC20, ISimpleSwap {
     ) public pure override returns (uint256 amountOut) {
         require(amountIn > 0, "Invalid amount");
         require(reserveIn > 0 && reserveOut > 0, "No liquidity");
-        
+
         amountOut = (amountIn * reserveOut) / (reserveIn + amountIn);
     }
 
@@ -367,12 +383,13 @@ contract SimpleSwap is ERC20, ISimpleSwap {
      * @return token0 Lower address
      * @return token1 Higher address
      */
-    function _sortTokens(address tokenA, address tokenB)
-        internal
-        pure
-        returns (address token0, address token1)
-    {
-        (token0, token1) = tokenA < tokenB ? (tokenA, tokenB) : (tokenB, tokenA);
+    function _sortTokens(
+        address tokenA,
+        address tokenB
+    ) internal pure returns (address token0, address token1) {
+        (token0, token1) = tokenA < tokenB
+            ? (tokenA, tokenB)
+            : (tokenB, tokenA);
     }
 
     /**
@@ -395,7 +412,7 @@ contract SimpleSwap is ERC20, ISimpleSwap {
         uint256 reserveB
     ) internal pure returns (uint256 amountA, uint256 amountB) {
         uint256 amountBOptimal = _quote(amountADesired, reserveA, reserveB);
-        
+
         if (amountBOptimal <= amountBDesired) {
             require(amountBOptimal >= amountBMin, "Insufficient B");
             (amountA, amountB) = (amountADesired, amountBOptimal);
@@ -479,11 +496,7 @@ contract SimpleSwap is ERC20, ISimpleSwap {
      * @param to Recipient address
      * @param amount Transfer amount
      */
-    function _safeTransfer(
-        address token,
-        address to,
-        uint256 amount
-    ) internal {
+    function _safeTransfer(address token, address to, uint256 amount) internal {
         IERC20(token).safeTransfer(to, amount);
     }
 
