@@ -3,29 +3,46 @@
 pragma solidity ^0.8.27;
 
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
 /**
  * @title TokenA
- * @dev A simple ERC20 token implementation with:
- * - Fixed supply of 1,000,000 tokens
- * - No decimal places (integer amounts only)
- * - Basic ERC20 functionality
+ * @dev An ERC20 token implementation with:
+ * - Fixed initial supply of 1,000,000 tokens (with 18 decimals)
+ * - Standard 18 decimal places (OpenZeppelin default)
+ * - Ownable functionality (initial owner only)
+ * - No mint capability after deployment
  * @author Francisco López G.
  */
-contract TokenA is ERC20 {
+contract TokenA is ERC20, Ownable {
+    // ==============================================
+    //              STATE VARIABLES
+    // ==============================================
+
+    /**
+     * @dev Constant for maximum token supply (1 million tokens)
+     * @notice 1 token = 10^18 units (standard ERC20 decimals)
+     */
+    uint256 public constant MAX_SUPPLY = 1_000_000 * 10 ** 18;
+
     // ==============================================
     //              CONSTRUCTOR
     // ==============================================
 
     /**
-     * @dev Initializes the TokenA contract
+     * @dev Initializes the TokenA contract:
      * - Sets token name to "TokenA"
      * - Sets token symbol to "TKA"
-     * - Mints initial supply of 1,000,000 tokens to deployer
+     * - Assigns initial owner
+     * - Mints fixed supply to initial owner
+     * @param initialOwner Address receiving:
+     *   - Contract ownership
+     *   - Initial token supply (1,000,000 tokens)
      */
-    constructor() ERC20("TokenA", "TKA") {
-        // Mint initial supply to contract deployer
-        _mint(msg.sender, 1000000);
+    constructor(
+        address initialOwner
+    ) ERC20("TokenA", "TKA") Ownable(initialOwner) {
+        _mint(initialOwner, MAX_SUPPLY);
     }
 
     // ==============================================
@@ -33,11 +50,9 @@ contract TokenA is ERC20 {
     // ==============================================
 
     /**
-     * @notice Returns the number of decimals used by the token
-     * @dev Overrides the standard ERC20 decimals function
-     * @return uint8 Always returns 0 (token uses integer amounts only)
+     * @notice This contract intentionally omits mint functionality
+     * @dev Any attempt to mint will fail (no function exists)
+     * @dev Ownership remains for potential upgrades/pausing
      */
-    function decimals() public pure override returns (uint8) {
-        return 0;
-    }
+    // No mint function included -> Supply is fixed forever
 }
