@@ -310,3 +310,9 @@ $RECYCLE.BIN/
 
 # Windows shortcuts
 *.lnk
+
+### Solidity: Artifacts and build ###
+# Contract compilation files
+contracts/artifacts/
+contracts/interfaces/artifacts/
+contracts/tokens/artifacts/
