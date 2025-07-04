@@ -11,29 +11,17 @@
 ## 📑 Table of Contents
 
 - [Features](#-features)
-
 - [Architecture](#-architecture)
-
 - [Getting Started](#-getting-started)
-
 - [Usage](#-usage)
-
 - [Local Development with Remix](#-local-development-with-remix)
-
 - [Core Functions](#-core-functions)
-
 - [Events](#-events)
-
 - [Security](#-security)
-
 - [Testing](#-testing)
-
 - [Deployment Info](#-deployment-info)
-
 - [Function Interface](#-function-interface)
-
 - [FAQ](#-faq)
-
 - [License](#-license)
 
 ---
