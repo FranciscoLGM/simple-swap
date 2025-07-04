@@ -231,24 +231,14 @@ contract SimpleSwap is ERC20, Pausable, Ownable, ReentrancyGuard, ISimpleSwap {
         nonReentrant
         returns (uint256 amountA, uint256 amountB, uint256 liquidity)
     {
+        address sender = msg.sender;
+
         // Input validation with custom errors
-        if (tokenA == address(0) || tokenB == address(0)) {
-            revert InvalidTokenAddress(tokenA == address(0) ? tokenA : tokenB);
-        }
-
-        if (to == address(0)) revert InvalidRecipient();
-
-        if (amountADesired == 0 || amountBDesired == 0)
-            revert ZeroAmount(amountADesired == 0 ? "TokenA" : "TokenB");
-
-        if (amountADesired < amountAMin || amountBDesired < amountBMin) {
-            bool isTokenA = amountADesired < amountAMin;
-            revert BelowMinimumAmount(
-                isTokenA ? "TokenA" : "TokenB",
-                isTokenA ? amountAMin : amountBMin,
-                isTokenA ? amountADesired : amountBDesired
-            );
-        }
+        _validateTokensAndRecipient(tokenA, tokenB, to);
+        if (amountADesired == 0) revert ZeroAmount("TokenA");
+        if (amountBDesired == 0) revert ZeroAmount("TokenB");
+        _checkMinAmount(amountADesired, amountAMin, "TokenA");
+        _checkMinAmount(amountBDesired, amountBMin, "TokenB");
 
         // Sort tokens and get pool reference
         (address token0, address token1) = _sortTokens(tokenA, tokenB);
@@ -272,12 +262,13 @@ contract SimpleSwap is ERC20, Pausable, Ownable, ReentrancyGuard, ISimpleSwap {
                 reserveA,
                 reserveB
             );
+            uint256 _totalSupply = totalSupply();
             liquidity = _calculateLiquidity(
                 amountA,
                 amountB,
                 reserveA,
                 reserveB,
-                totalSupply()
+                _totalSupply
             );
         }
 
@@ -291,7 +282,7 @@ contract SimpleSwap is ERC20, Pausable, Ownable, ReentrancyGuard, ISimpleSwap {
         _updateReserves(token0, token1, reserveA + amountA, reserveB + amountB);
 
         emit LiquidityAdded(
-            msg.sender,
+            sender,
             tokenA,
             tokenB,
             amountA,
@@ -329,6 +320,8 @@ contract SimpleSwap is ERC20, Pausable, Ownable, ReentrancyGuard, ISimpleSwap {
         nonReentrant
         returns (uint256 amountA, uint256 amountB)
     {
+        address sender = msg.sender;
+
         if (liquidity == 0) revert ZeroAmount("Liquidity");
 
         // Sort tokens and get pool reference
@@ -346,17 +339,11 @@ contract SimpleSwap is ERC20, Pausable, Ownable, ReentrancyGuard, ISimpleSwap {
             reserveB
         );
 
-        if (amountA < amountAMin || amountB < amountBMin) {
-            bool isTokenA = amountA < amountAMin;
-            revert BelowMinimumAmount(
-                isTokenA ? "TokenA" : "TokenB",
-                isTokenA ? amountAMin : amountBMin,
-                isTokenA ? amountA : amountB
-            );
-        }
+        _checkMinAmount(amountA, amountAMin, "TokenA");
+        _checkMinAmount(amountB, amountBMin, "TokenB");
 
         // Burn LP tokens and transfer underlying assets
-        _burn(msg.sender, liquidity);
+        _burn(sender, liquidity);
         _safeTransfer(token0, to, amountA);
         _safeTransfer(token1, to, amountB);
 
@@ -364,7 +351,7 @@ contract SimpleSwap is ERC20, Pausable, Ownable, ReentrancyGuard, ISimpleSwap {
         _updateReserves(token0, token1, reserveA - amountA, reserveB - amountB);
 
         emit LiquidityRemoved(
-            msg.sender,
+            sender,
             tokenA,
             tokenB,
             amountA,
@@ -396,9 +383,11 @@ contract SimpleSwap is ERC20, Pausable, Ownable, ReentrancyGuard, ISimpleSwap {
         nonReentrant
         returns (uint256[] memory amounts)
     {
+        address sender = msg.sender;
+
         // Validate swap parameters
         if (path.length != 2) revert InvalidPath();
-        if (to == address(0)) revert InvalidRecipient();
+        _validateTokensAndRecipient(path[0], path[1], to);
         amounts = new uint256[](2);
         amounts[0] = amountIn;
 
@@ -423,7 +412,7 @@ contract SimpleSwap is ERC20, Pausable, Ownable, ReentrancyGuard, ISimpleSwap {
             revert BelowMinimumAmount("Output", amountOutMin, amounts[1]);
 
         // Execute token transfers
-        IERC20(tokenIn).safeTransferFrom(msg.sender, address(this), amountIn);
+        IERC20(tokenIn).safeTransferFrom(sender, address(this), amountIn);
         IERC20(tokenOut).safeTransfer(to, amounts[1]);
 
         // Update reserves (optimized to avoid duplicate calculations)
@@ -444,7 +433,7 @@ contract SimpleSwap is ERC20, Pausable, Ownable, ReentrancyGuard, ISimpleSwap {
             );
         }
 
-        emit Swap(msg.sender, tokenIn, tokenOut, amountIn, amounts[1]);
+        emit Swap(sender, tokenIn, tokenOut, amountIn, amounts[1]);
     }
 
     /**
@@ -481,7 +470,7 @@ contract SimpleSwap is ERC20, Pausable, Ownable, ReentrancyGuard, ISimpleSwap {
         address to,
         uint256 amount
     ) external onlyOwner whenPaused nonReentrant {
-        if (to == address(0)) revert InvalidRecipient();
+        _validateTokensAndRecipient(token, address(1), to);
         if (amount == 0) revert ZeroAmount("Withdrawal");
 
         IERC20(token).safeTransfer(to, amount);
@@ -593,6 +582,49 @@ contract SimpleSwap is ERC20, Pausable, Ownable, ReentrancyGuard, ISimpleSwap {
         (token0, token1) = tokenA < tokenB
             ? (tokenA, tokenB)
             : (tokenB, tokenA);
+    }
+
+    /**
+     * @dev Centralizes common token and recipient validations
+     * @notice Combines multiple checks into a single function for gas efficiency
+     * @dev Validations performed:
+     * - Token addresses are not zero
+     * - Recipient address is not zero
+     * - Tokens are not identical
+     * @param tokenA First token address to validate
+     * @param tokenB Second token address to validate
+     * @param to Recipient address to validate
+     * @custom:reverts InvalidTokenAddress If either token address is 0x0
+     * @custom:reverts InvalidRecipient If recipient address is 0x0
+     * @custom:reverts IdenticalTokens If tokenA and tokenB are the same
+     */
+    function _validateTokensAndRecipient(
+        address tokenA,
+        address tokenB,
+        address to
+    ) internal pure {
+        if (tokenA == address(0)) revert InvalidTokenAddress(tokenA);
+        if (tokenB == address(0)) revert InvalidTokenAddress(tokenB);
+        if (to == address(0)) revert InvalidRecipient();
+        if (tokenA == tokenB) revert IdenticalTokens();
+    }
+
+    /**
+     * @dev Verifies an amount meets the required minimum threshold
+     * @notice Standardized minimum amount check with descriptive error
+     * @param amount Actual amount being checked
+     * @param minAmount Minimum required amount
+     * @param tokenName Identifier for the token (used in error message)
+     * @custom:reverts BelowMinimumAmount If amount < minAmount
+     */
+    function _checkMinAmount(
+        uint256 amount,
+        uint256 minAmount,
+        string memory tokenName
+    ) internal pure {
+        if (amount < minAmount) {
+            revert BelowMinimumAmount(tokenName, minAmount, amount);
+        }
     }
 
     /**
