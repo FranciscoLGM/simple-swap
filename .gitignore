@@ -316,3 +316,10 @@ $RECYCLE.BIN/
 contracts/artifacts/
 contracts/interfaces/artifacts/
 contracts/tokens/artifacts/
+
+# Remix dependencies
+.deps/
+
+# Hardhat / Foundry
+artifacts/
+cache/

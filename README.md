@@ -36,32 +36,6 @@
 
 - [License](#-license)
 
-- [Features](#-features)
-
-- [Architecture](#-architecture)
-
-- [Getting Started](#-getting-started)
-
-- [Usage](#-usage)
-
-- [Local Development with Remix](#-local-development-with-remix)
-
-- [Core Functions](#-core-functions)
-
-- [Events](#-events)
-
-- [Security](#-security)
-
-- [Testing](#-testing)
-
-- [Deployment Info](#-deployment-info)
-
-- [Function Interface](#-function-interface)
-
-- [FAQ](#-faq)
-
-- [License](#-license)
-
 ---
 
 ## 🌟 Features
@@ -301,7 +275,7 @@ function _checkMinAmount(
 ) internal pure;
 ```
 
-All public/external functions exposed by the interface:
+### All public/external functions exposed by the interface:
 
 ```solidity
 function addLiquidity(address tokenA, address tokenB, uint amountADesired, uint amountBDesired, uint amountAMin, uint amountBMin, address to, uint deadline) external returns (uint amountA, uint amountB, uint liquidity);
