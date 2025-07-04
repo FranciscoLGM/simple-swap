@@ -11,17 +11,55 @@
 ## 📑 Table of Contents
 
 - [Features](#-features)
+
 - [Architecture](#-architecture)
+
 - [Getting Started](#-getting-started)
+
 - [Usage](#-usage)
+
 - [Local Development with Remix](#-local-development-with-remix)
+
 - [Core Functions](#-core-functions)
+
 - [Events](#-events)
+
 - [Security](#-security)
+
 - [Testing](#-testing)
+
 - [Deployment Info](#-deployment-info)
+
 - [Function Interface](#-function-interface)
+
 - [FAQ](#-faq)
+
+- [License](#-license)
+
+- [Features](#-features)
+
+- [Architecture](#-architecture)
+
+- [Getting Started](#-getting-started)
+
+- [Usage](#-usage)
+
+- [Local Development with Remix](#-local-development-with-remix)
+
+- [Core Functions](#-core-functions)
+
+- [Events](#-events)
+
+- [Security](#-security)
+
+- [Testing](#-testing)
+
+- [Deployment Info](#-deployment-info)
+
+- [Function Interface](#-function-interface)
+
+- [FAQ](#-faq)
+
 - [License](#-license)
 
 ---
@@ -240,6 +278,8 @@ npx hardhat test
 | ------- | -------------------------------------------- |
 | Sepolia | `0xC12806C775B5898EC3306d5Da2C216f1dCf2a4d2` |
 
+_Replace with your local/testnet deployment as needed._
+
 ---
 
 ## 🔌 Function Interface
@@ -247,19 +287,18 @@ npx hardhat test
 ### Internal Helper Functions
 
 ```solidity
-
 function _validateTokensAndRecipient(
     address tokenA,
     address tokenB,
     address to
 ) internal pure;
 
+
 function _checkMinAmount(
     uint256 amount,
     uint256 minAmount,
     string memory tokenName
 ) internal pure;
-
 ```
 
 All public/external functions exposed by the interface:
