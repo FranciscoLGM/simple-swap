@@ -19,6 +19,8 @@
 - [Events](#-events)
 - [Security](#-security)
 - [Testing](#-testing)
+- [Deployment Info](#-deployment-info)
+- [Function Interface](#-function-interface)
 - [FAQ](#-faq)
 - [License](#-license)
 
@@ -34,6 +36,7 @@
 - 🧠 Gas-efficient code with custom error types
 - 🔍 Full input validation and deadline enforcement
 - 📘 Fully documented using NatSpec
+- 🧩 Validations consolidadas y modularizadas para eficiencia
 
 ---
 
@@ -121,6 +124,7 @@ await simpleSwap.addLiquidity(
 ### Steps:
 
 1. Open [Remix IDE](https://remix.ethereum.org)
+
 2. Create:
 
    - `SimpleSwap.sol`
@@ -129,9 +133,13 @@ await simpleSwap.addLiquidity(
    - `ISimpleSwap.sol`
 
 3. Paste the source code into each
+
 4. Compile using Solidity `^0.8.0`
+
 5. Deploy tokens, then `SimpleSwap`
+
 6. Approve token transfers to the DEX
+
 7. Call:
 
    - `addLiquidity()`
@@ -182,54 +190,12 @@ await simpleSwap.addLiquidity(
 
 ## 📡 Events
 
-### LiquidityAdded
+_Refer to the Solidity contract for detailed event signatures._
 
-```solidity
-event LiquidityAdded(
-    address indexed provider,
-    address indexed tokenA,
-    address indexed tokenB,
-    uint256 amountA,
-    uint256 amountB,
-    uint256 liquidity
-);
-```
-
-### LiquidityRemoved
-
-```solidity
-event LiquidityRemoved(
-    address indexed provider,
-    address indexed tokenA,
-    address indexed tokenB,
-    uint256 amountA,
-    uint256 amountB,
-    uint256 liquidity
-);
-```
-
-### Swap
-
-```solidity
-event Swap(
-    address indexed sender,
-    address indexed tokenIn,
-    address indexed tokenOut,
-    uint256 amountIn,
-    uint256 amountOut
-);
-```
-
-### EmergencyWithdraw
-
-```solidity
-event EmergencyWithdraw(
-    address indexed owner,
-    address indexed token,
-    address indexed to,
-    uint256 amount
-);
-```
+- `LiquidityAdded`
+- `LiquidityRemoved`
+- `Swap`
+- `EmergencyWithdraw`
 
 ---
 
@@ -242,6 +208,7 @@ event EmergencyWithdraw(
 - ✅ Deadline checks
 - ✅ Custom error validation
 - ✅ Reserve sorting and storage consistency
+- ✅ Consolidated internal validations
 
 ### Tips
 
@@ -267,7 +234,59 @@ npx hardhat test
 
 ---
 
+## 📍 Deployment Info
+
+| Network | Contract Address                             |
+| ------- | -------------------------------------------- |
+| Sepolia | `0xC12806C775B5898EC3306d5Da2C216f1dCf2a4d2` |
+
+---
+
+## 🔌 Function Interface
+
+### Internal Helper Functions
+
+```solidity
+
+function _validateTokensAndRecipient(
+    address tokenA,
+    address tokenB,
+    address to
+) internal pure;
+
+function _checkMinAmount(
+    uint256 amount,
+    uint256 minAmount,
+    string memory tokenName
+) internal pure;
+
+```
+
+All public/external functions exposed by the interface:
+
+```solidity
+function addLiquidity(address tokenA, address tokenB, uint amountADesired, uint amountBDesired, uint amountAMin, uint amountBMin, address to, uint deadline) external returns (uint amountA, uint amountB, uint liquidity);
+
+function removeLiquidity(address tokenA, address tokenB, uint liquidity, uint amountAMin, uint amountBMin, address to, uint deadline) external returns (uint amountA, uint amountB);
+
+function swapExactTokensForTokens(uint amountIn, uint amountOutMin, address[] calldata path, address to, uint deadline) external returns (uint[] memory amounts);
+
+function getAmountOut(uint amountIn, uint reserveIn, uint reserveOut) external pure returns (uint amountOut);
+
+function getPrice(address tokenA, address tokenB) external view returns (uint price);
+
+function getReserves(address tokenA, address tokenB) external view returns (uint reserveA, uint reserveB);
+
+function pause() external;
+function unpause() external;
+function emergencyWithdraw(address token, address to, uint amount) external;
+```
+
+---
+
 ## ❓ FAQ
+
+_Refer to in-code NatSpec for further behavior explanations._
 
 ### How are LP tokens calculated?
 
@@ -298,9 +317,9 @@ MIT License. See [LICENSE](LICENSE) for full details.
 
 > 🔗 **Verified Contract**:
 
-- [View on Sepolia Etherscan](https://sepolia.etherscan.io/address/0xA5Ca210d484C3BE6c8B9C4e53Ef4D290782Fb494#code)
-- [View on Sepolia Sourcify](https://repo.sourcify.dev/11155111/0xA5Ca210d484C3BE6c8B9C4e53Ef4D290782Fb494)
-- [View on Sepolia Blockscout](https://eth-sepolia.blockscout.com/address/0xA5Ca210d484C3BE6c8B9C4e53Ef4D290782Fb494?tab=contract)
-- [View on Sepolia Routescan](https://testnet.routescan.io/address/0xA5Ca210d484C3BE6c8B9C4e53Ef4D290782Fb494/contract/11155111/code)
+- [View on Sepolia Etherscan](https://sepolia.etherscan.io/address/0xC12806C775B5898EC3306d5Da2C216f1dCf2a4d2#code)
+- [View on Sepolia Sourcify](https://repo.sourcify.dev/11155111/0xC12806C775B5898EC3306d5Da2C216f1dCf2a4d2)
+- [View on Sepolia Blockscout](https://eth-sepolia.blockscout.com/address/0xC12806C775B5898EC3306d5Da2C216f1dCf2a4d2?tab=contract)
+- [View on Sepolia Routescan](https://testnet.routescan.io/address/0xC12806C775B5898EC3306d5Da2C216f1dCf2a4d2/contract/11155111/code)
 
 ---
